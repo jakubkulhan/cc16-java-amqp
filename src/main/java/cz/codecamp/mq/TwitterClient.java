@@ -1,9 +1,5 @@
 package cz.codecamp.mq;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import com.twitter.hbc.ClientBuilder;
 import com.twitter.hbc.core.Client;
 import com.twitter.hbc.core.Constants;
@@ -16,8 +12,12 @@ import com.twitter.hbc.httpclient.auth.Authentication;
 import com.twitter.hbc.httpclient.auth.OAuth1;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.amqp.core.Message;
+import org.springframework.amqp.core.MessageProperties;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.InitializingBean;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -44,6 +44,9 @@ public class TwitterClient implements InitializingBean, DisposableBean {
 
     @Value("${twitter.secret}")
     String secret;
+
+    @Autowired
+    RabbitTemplate rabbitTemplate;
 
     private BlockingQueue<String> msgQueue = new LinkedBlockingQueue<>(100000);
     private BlockingQueue<Event> eventQueue = new LinkedBlockingQueue<>(1000);
@@ -89,11 +92,15 @@ public class TwitterClient implements InitializingBean, DisposableBean {
             while (!hosebirdClient.isDone()) {
                 try {
                     String message = msgQueue.take();
-                    JsonObject object = new JsonParser().parse(message).getAsJsonObject();
 
-                    Gson gson = new GsonBuilder().setPrettyPrinting().create();
-
-                    System.out.println(gson.toJson(object));
+                    MessageProperties messageProperties = new MessageProperties();
+                    messageProperties.setContentType(MessageProperties.CONTENT_TYPE_JSON);
+                    messageProperties.setContentEncoding("UTF-8");
+                    rabbitTemplate.send(
+                        "",
+                        "election_night",
+                        new Message(message.getBytes(), messageProperties)
+                    );
 
                 } catch (InterruptedException e) {
                     break;
